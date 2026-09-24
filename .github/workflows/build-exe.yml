@@ -1,0 +1,62 @@
+name: Build exe
+
+on:
+  push:
+    branches: [main, "claude/**"]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check source
+        id: src
+        shell: pwsh
+        run: |
+          if (Test-Path uart_monitar_gui.py) {
+            "found=true" >> $env:GITHUB_OUTPUT
+          } else {
+            "found=false" >> $env:GITHUB_OUTPUT
+            Write-Output "::notice::uart_monitar_gui.py is not in the repository yet; skipping build."
+          }
+
+      - uses: actions/setup-python@v5
+        if: steps.src.outputs.found == 'true'
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        if: steps.src.outputs.found == 'true'
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Build
+        if: steps.src.outputs.found == 'true'
+        run: pyinstaller --noconfirm --windowed --onedir --name UartMonitor --collect-data customtkinter uart_monitar_gui.py
+
+      - name: Add usage guide
+        if: steps.src.outputs.found == 'true'
+        shell: pwsh
+        run: Copy-Item packaging/*.txt dist/UartMonitor/
+
+      # Artifact はダウンロード時に GitHub が zip 化するので、フォルダをそのまま上げる
+      - uses: actions/upload-artifact@v4
+        if: steps.src.outputs.found == 'true'
+        with:
+          name: UartMonitor
+          path: dist/UartMonitor
+
+      - name: Package zip for release
+        if: steps.src.outputs.found == 'true' && startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: Compress-Archive -Path dist/UartMonitor -DestinationPath UartMonitor.zip
+
+      - uses: softprops/action-gh-release@v2
+        if: steps.src.outputs.found == 'true' && startsWith(github.ref, 'refs/tags/v')
+        with:
+          files: UartMonitor.zip

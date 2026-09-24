@@ -25,6 +25,7 @@ UartMonitor: UARTログをGUIで表示しながらCSVに保存するツール（
 import csv
 import os
 import re
+import sys
 import queue
 import threading
 from datetime import datetime
@@ -98,6 +99,16 @@ def parse_line(line: str):
         }
     except (ValueError, IndexError):
         return None
+
+
+def app_dir() -> str:
+    """
+    CSVの保存先フォルダを返す。
+    exe化(PyInstaller)時はexeと同じフォルダ、スクリプト実行時はこの.pyと同じフォルダ。
+    """
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
 
 
 def get_next_log_filename(base_name: str, directory: str = ".") -> str:
@@ -391,8 +402,17 @@ class UartLoggerApp:
             messagebox.showerror("接続エラー", f"{port} を開けませんでした。\n\n{e}")
             return
 
-        self.current_csv_name = get_next_log_filename(self.filename_entry.get())
-        self.csv_file = open(self.current_csv_name, "w", newline="", encoding="utf-8")
+        save_dir = app_dir()
+        self.current_csv_name = get_next_log_filename(self.filename_entry.get(), save_dir)
+        csv_path = os.path.join(save_dir, self.current_csv_name)
+        try:
+            self.csv_file = open(csv_path, "w", newline="", encoding="utf-8")
+        except OSError as e:
+            self.serial_conn.close()
+            self.serial_conn = None
+            self.toggle_btn.configure(text="接続", state="normal")
+            messagebox.showerror("保存エラー", f"CSVファイルを作成できませんでした。\n\n{csv_path}\n\n{e}")
+            return
         self.csv_writer = csv.writer(self.csv_file)
         self.csv_writer.writerow([
             "pc_timestamp", "t_ms", "elapsed_ms", "voltage_mV", "current_mA",
@@ -415,6 +435,7 @@ class UartLoggerApp:
         self.log_text.configure(state="normal")
         self.log_text.delete("1.0", "end")
         self.log_text.configure(state="disabled")
+        self._append_log(f"保存先: {csv_path}")
 
         self.status_dot.configure(text_color=COL_OK)
         self.status_label.configure(
