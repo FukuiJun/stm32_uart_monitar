@@ -13,6 +13,7 @@ STM32L552VET6 から UART で送られるバッテリー測定データを PC �
   - 各サイズは **BMP 形式で格納すること**（PNG 形式だと Tk がサイズを読めず 16px を引き伸ばして使うため、タスクバーでぼやける）
   - Windows ではさらに `_apply_win_icons()` が表示倍率に合ったサイズを Win32 API で設定する
 - `.github/scripts/smoke_test_exe.py` — CI でビルドした exe を起動し、ウィンドウのアイコンが icon.ico と一致するか検査
+  - CI は 100% 表示のため、icon.ico を PNG 形式に差し替えた 2 回目の起動で `_apply_win_icons()` が効いていることも確認する（150% 等の実機確認は CI ではできない）
 
 ## 受信フォーマット（マイコン → PC）
 
