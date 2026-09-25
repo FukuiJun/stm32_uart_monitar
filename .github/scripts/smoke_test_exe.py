@@ -1,13 +1,15 @@
 """
-ビルドした UartMonitor.exe を起動し、ウィンドウが開くこととアイコンサイズを確認する (Windows 専用)。
+ビルドした UartMonitor.exe を起動し、ウィンドウが開くこととアイコンの画質を確認する (Windows 専用)。
 
-ウィンドウの大アイコンが 16px になっている (Tk が .ico のサイズを読めていない) とタスクバーでぼやけるため、
-大アイコン >= 32px、小アイコン >= 16px であることを検査する。
+Tk が .ico の各サイズを読めないと、16px の画像を引き伸ばしたアイコンがウィンドウに設定され
+タスクバーでぼやける。ウィンドウのアイコン(大・小)が、同梱の icon.ico を同じサイズで
+読み込んだ画像とピクセル単位で一致することを検査する。
 
 使い方: python smoke_test_exe.py dist/UartMonitor/UartMonitor.exe
 """
 
 import ctypes
+import os
 import subprocess
 import sys
 import time
@@ -15,6 +17,7 @@ from ctypes import wintypes
 
 WINDOW_TITLE = "UartMonitor"
 WM_GETICON, ICON_SMALL, ICON_BIG = 0x007F, 0, 1
+IMAGE_ICON, LR_LOADFROMFILE = 1, 0x10
 SMTO_ABORTIFHUNG = 0x0002
 
 user32 = ctypes.windll.user32
@@ -44,21 +47,64 @@ class BITMAP(ctypes.Structure):
     ]
 
 
+class BITMAPINFOHEADER(ctypes.Structure):
+    _fields_ = [
+        ("biSize", wintypes.DWORD), ("biWidth", wintypes.LONG), ("biHeight", wintypes.LONG),
+        ("biPlanes", wintypes.WORD), ("biBitCount", wintypes.WORD),
+        ("biCompression", wintypes.DWORD), ("biSizeImage", wintypes.DWORD),
+        ("biXPelsPerMeter", wintypes.LONG), ("biYPelsPerMeter", wintypes.LONG),
+        ("biClrUsed", wintypes.DWORD), ("biClrImportant", wintypes.DWORD),
+    ]
+
+
 user32.GetIconInfo.argtypes = [wintypes.HICON, ctypes.POINTER(ICONINFO)]
+user32.LoadImageW.restype = wintypes.HANDLE
+user32.LoadImageW.argtypes = [
+    wintypes.HINSTANCE, wintypes.LPCWSTR, wintypes.UINT, ctypes.c_int, ctypes.c_int, wintypes.UINT,
+]
+user32.GetDC.restype = wintypes.HDC
+user32.GetDC.argtypes = [wintypes.HWND]
+user32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
 gdi32.GetObjectW.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p]
+gdi32.GetDIBits.argtypes = [
+    wintypes.HDC, wintypes.HBITMAP, wintypes.UINT, wintypes.UINT,
+    ctypes.c_void_p, ctypes.c_void_p, wintypes.UINT,
+]
+gdi32.DeleteObject.argtypes = [wintypes.HANDLE]
 
 
-def icon_width(hwnd, kind):
+def icon_pixels(hicon):
+    """HICON のカラー画像を (幅, 高さ, 32bpp BGRA バイト列) で返す。"""
+    info = ICONINFO()
+    if not user32.GetIconInfo(hicon, ctypes.byref(info)):
+        return 0, 0, b""
+    try:
+        bmp = BITMAP()
+        gdi32.GetObjectW(info.hbmColor, ctypes.sizeof(bmp), ctypes.byref(bmp))
+        w, h = bmp.bmWidth, bmp.bmHeight
+        bih = BITMAPINFOHEADER(ctypes.sizeof(BITMAPINFOHEADER), w, -h, 1, 32)
+        buf = ctypes.create_string_buffer(w * h * 4)
+        hdc = user32.GetDC(None)
+        gdi32.GetDIBits(hdc, info.hbmColor, 0, h, buf, ctypes.byref(bih), 0)
+        user32.ReleaseDC(None, hdc)
+        return w, h, buf.raw
+    finally:
+        gdi32.DeleteObject(info.hbmColor)
+        gdi32.DeleteObject(info.hbmMask)
+
+
+def check_window_icon(hwnd, kind, label, ico_path):
     result = ctypes.c_size_t()
     user32.SendMessageTimeoutW(hwnd, WM_GETICON, kind, 0, SMTO_ABORTIFHUNG, 5000, ctypes.byref(result))
     if not result.value:
-        return 0
-    info = ICONINFO()
-    if not user32.GetIconInfo(result.value, ctypes.byref(info)):
-        return 0
-    bmp = BITMAP()
-    gdi32.GetObjectW(info.hbmColor or info.hbmMask, ctypes.sizeof(bmp), ctypes.byref(bmp))
-    return bmp.bmWidth
+        return f"{label}: no icon set"
+    w, h, actual = icon_pixels(result.value)
+    expected_icon = user32.LoadImageW(None, ico_path, IMAGE_ICON, w, h, LR_LOADFROMFILE)
+    _, _, expected = icon_pixels(expected_icon)
+    print(f"{label}: {w}x{h}px, matches icon.ico: {actual == expected}")
+    if actual != expected:
+        return f"{label}: differs from icon.ico at {w}px (stretched from another size -> blurry)"
+    return None
 
 
 def main():
@@ -75,10 +121,17 @@ def main():
             sys.exit(f"window '{WINDOW_TITLE}' did not appear within 30s")
 
         time.sleep(3)  # customtkinter の初期化(タイトルバー配色の再表示等)を待つ
-        big, small = icon_width(hwnd, ICON_BIG), icon_width(hwnd, ICON_SMALL)
-        print(f"window icon: big={big}px small={small}px")
-        if big < 32 or small < 16:
-            sys.exit("window icon is too small (taskbar icon would be blurry)")
+        ico_path = os.path.abspath(
+            os.path.join(os.path.dirname(sys.argv[1]), "_internal", "assets", "icon.ico")
+        )
+        errors = [
+            e for e in (
+                check_window_icon(hwnd, ICON_BIG, "big icon", ico_path),
+                check_window_icon(hwnd, ICON_SMALL, "small icon", ico_path),
+            ) if e
+        ]
+        if errors:
+            sys.exit("\n".join(errors))
     finally:
         proc.kill()
 
