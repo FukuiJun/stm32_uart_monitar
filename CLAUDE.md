@@ -42,12 +42,14 @@ pc_timestamp, t_ms, elapsed_ms, voltage_mV, current_mA, cap_mAh, cap_max_mAh, so
 - コマンド: `pyinstaller --noconfirm --windowed --onedir --name UartMonitor --icon assets/icon.ico --add-data "assets/icon.ico;assets" --collect-data customtkinter uart_monitar_gui.py`
   - `--icon` は exe ファイル自体のアイコン、`--add-data` はウィンドウ(タイトルバー・タスクバー)用に `_internal/assets/icon.ico` として同梱
   - `--collect-data customtkinter` がないとテーマ JSON が同梱されず起動時に落ちる
-- `main` / `claude/**` への push と手動実行で Artifact `UartMonitor.zip`、`v*` タグ push で Release にも添付
+- `main` / `claude/**` への push と手動実行で Artifact `UartMonitor.zip`、リリース方法は下記
 
 ## バージョン管理・リリース
 
 - ユーザーから指定がない限り、バージョン番号とリリースのタイミングは Claude が判断してよい（ユーザー了承済み）
-- `vMAJOR.MINOR.PATCH` のタグを push すると Actions が exe をビルドし Release に `UartMonitor.zip` を添付する
+- リリースは Actions の「Build exe」を手動実行し、入力 `release_tag` に `vMAJOR.MINOR.PATCH` を指定する（MCP `actions_run_trigger`、`ref` は作業ブランチ）
+  - ビルド・スモークテスト後、ビルドしたコミットにタグを作成し Release に `UartMonitor.zip` を添付する
+  - Claude のセッションからはタグの push が git プロキシで拒否される（HTTP 403）ため、この方法を使う。ユーザーが手元からタグを push しても同様にリリースされる
   - PATCH: 不具合修正・アイコン等の軽微な変更 / MINOR: 機能追加 / MAJOR: CSV フォーマット等の互換性が変わる変更
 - exe の中身が変わらない変更（ドキュメントのみ等）ではタグを打たない
 - リリース本文の編集・削除は MCP ツールがないためユーザーが GitHub 画面で行う
