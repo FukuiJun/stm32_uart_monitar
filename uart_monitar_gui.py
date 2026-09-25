@@ -170,11 +170,17 @@ class UartLoggerApp:
             pass
 
         # Tkは表示倍率に関係なく16px/32pxのアイコンしか渡さないため、125%・150%表示などで
-        # タスクバーのアイコンが引き伸ばされてぼやける。ウィンドウ表示時に倍率に合ったサイズを
-        # .icoから読み直し、Win32 APIで直接設定する
+        # タイトルバー・タスクバーのアイコンが引き伸ばされてぼやける。倍率に合ったサイズを
+        # .icoから読み直し、Win32 APIで直接設定する。
+        # ウィンドウ枠はCTkの初期化中(update)に作成済みなので、ここで設定できる。
+        # 表示のタイミングに依存しないようmainloop開始後にも再設定し、
+        # 倍率の違うモニターへ移動したときは<Configure>で設定し直す
         if sys.platform == "win32":
             self._win_icons = {}
-            self.root.bind("<Map>", self._apply_win_icons, add="+")
+            self._win_icon_dpi = None
+            self._apply_win_icons()
+            self.root.after(300, self._apply_win_icons)
+            self.root.bind("<Configure>", self._apply_win_icons, add="+")
 
     def _apply_win_icons(self, event=None):
         if event is not None and event.widget is not self.root:
@@ -201,6 +207,9 @@ class UartLoggerApp:
                 dpi = user32.GetDpiForWindow(hwnd) or 96
             except AttributeError:  # Windows 10 1607より前
                 dpi = 96
+            if event is not None and dpi == self._win_icon_dpi:
+                return  # 倍率が変わっていなければ何もしない
+            self._win_icon_dpi = dpi
 
             for kind, base in ((ICON_SMALL, 16), (ICON_BIG, 32)):
                 size = round(base * dpi / 96)
