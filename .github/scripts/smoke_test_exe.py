@@ -5,13 +5,21 @@ Tk が .ico の各サイズを読めないと、16px の画像を引き伸ばし
 タスクバーでぼやける。ウィンドウのアイコン(大・小)が、同梱の icon.ico を同じサイズで
 読み込んだ画像とピクセル単位で一致することを検査する。
 
+1回目: 同梱の icon.ico のまま起動する。
+2回目: icon.ico を Tk が読めない PNG 形式に差し替えたコピーで起動する。Tk だけでは 16px を
+引き伸ばしたアイコンになるため、アプリ側の Win32 API による設定 (_apply_win_icons) が
+実際に効いていることを確認できる (CI は 100% 表示で、通常は Tk と結果が同じになるため)。
+2回目には Pillow が必要。
+
 使い方: python smoke_test_exe.py dist/UartMonitor/UartMonitor.exe
 """
 
 import ctypes
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from ctypes import wintypes
 
@@ -107,33 +115,57 @@ def check_window_icon(hwnd, kind, label, ico_path):
     return None
 
 
-def main():
-    proc = subprocess.Popen([sys.argv[1]])
+def run_check(exe_path):
+    """exe を起動してアイコンを検査し、エラーメッセージのリストを返す。"""
+    proc = subprocess.Popen([exe_path])
     try:
         hwnd = None
         deadline = time.time() + 30
         while time.time() < deadline and not hwnd:
             if proc.poll() is not None:
-                sys.exit(f"exe exited early with code {proc.returncode}")
+                return [f"exe exited early with code {proc.returncode}"]
             hwnd = user32.FindWindowW(None, WINDOW_TITLE)
             time.sleep(0.5)
         if not hwnd:
-            sys.exit(f"window '{WINDOW_TITLE}' did not appear within 30s")
+            return [f"window '{WINDOW_TITLE}' did not appear within 30s"]
 
         time.sleep(3)  # customtkinter の初期化(タイトルバー配色の再表示等)を待つ
-        ico_path = os.path.abspath(
-            os.path.join(os.path.dirname(sys.argv[1]), "_internal", "assets", "icon.ico")
-        )
-        errors = [
+        ico_path = bundled_ico(exe_path)
+        return [
             e for e in (
                 check_window_icon(hwnd, ICON_BIG, "big icon", ico_path),
                 check_window_icon(hwnd, ICON_SMALL, "small icon", ico_path),
             ) if e
         ]
-        if errors:
-            sys.exit("\n".join(errors))
     finally:
         proc.kill()
+        proc.wait()
+
+
+def bundled_ico(exe_path):
+    return os.path.abspath(os.path.join(os.path.dirname(exe_path), "_internal", "assets", "icon.ico"))
+
+
+def main():
+    exe_path = os.path.abspath(sys.argv[1])
+
+    print("[1] bundled icon.ico")
+    errors = run_check(exe_path)
+
+    print("[2] icon.ico replaced with PNG entries (Tk cannot read sizes; Win32 path must handle it)")
+    from PIL import Image
+
+    with tempfile.TemporaryDirectory() as tmp:
+        app_copy = os.path.join(tmp, "UartMonitor")
+        shutil.copytree(os.path.dirname(exe_path), app_copy)
+        exe_copy = os.path.join(app_copy, os.path.basename(exe_path))
+        ico = Image.open(bundled_ico(exe_path))
+        sizes = sorted(ico.info["sizes"])
+        ico.save(bundled_ico(exe_copy), format="ICO", sizes=sizes)  # Pillow の既定は PNG 形式
+        errors += [f"[PNG ico] {e}" for e in run_check(exe_copy)]
+
+    if errors:
+        sys.exit("\n".join(errors))
 
 
 if __name__ == "__main__":

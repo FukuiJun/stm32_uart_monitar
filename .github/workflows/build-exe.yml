@@ -49,7 +49,9 @@ jobs:
 
       - name: Smoke test (window opens, icon size)
         if: steps.src.outputs.found == 'true'
-        run: python .github/scripts/smoke_test_exe.py dist/UartMonitor/UartMonitor.exe
+        run: |
+          pip install pillow
+          python .github/scripts/smoke_test_exe.py dist/UartMonitor/UartMonitor.exe
 
       - name: Add usage guide
         if: steps.src.outputs.found == 'true'
