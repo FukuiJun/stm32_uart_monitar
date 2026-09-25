@@ -10,6 +10,9 @@ STM32L552VET6 から UART で送られるバッテリー測定データを PC �
 - `.github/workflows/build-exe.yml` — Windows ランナーで exe をビルドし zip 化する GitHub Actions
 - `packaging/使い方.txt` — 配布 zip に同梱するエンドユーザー向け説明
 - `assets/icon.ico` — アプリアイコン（exe・ウィンドウ用、16〜256px マルチサイズ）。`assets/icon.svg` がマスター
+  - 各サイズは **BMP 形式で格納すること**（PNG 形式だと Tk がサイズを読めず 16px を引き伸ばして使うため、タスクバーでぼやける）
+  - Windows ではさらに `_apply_win_icons()` が表示倍率に合ったサイズを Win32 API で設定する
+- `.github/scripts/smoke_test_exe.py` — CI でビルドした exe を起動し、ウィンドウのアイコンが icon.ico と一致するか検査
 
 ## 受信フォーマット（マイコン → PC）
 

@@ -163,8 +163,53 @@ class UartLoggerApp:
 
     def _set_window_icon(self):
         # タイトルバー・タスクバーのアイコン(.icoはWindowsのみ対応。失敗しても起動は続ける)
+        self.icon_path = resource_path(os.path.join("assets", "icon.ico"))
         try:
-            self.root.iconbitmap(resource_path(os.path.join("assets", "icon.ico")))
+            self.root.iconbitmap(self.icon_path)
+        except Exception:
+            pass
+
+        # Tkは表示倍率に関係なく16px/32pxのアイコンしか渡さないため、125%・150%表示などで
+        # タスクバーのアイコンが引き伸ばされてぼやける。ウィンドウ表示時に倍率に合ったサイズを
+        # .icoから読み直し、Win32 APIで直接設定する
+        if sys.platform == "win32":
+            self._win_icons = {}
+            self.root.bind("<Map>", self._apply_win_icons, add="+")
+
+    def _apply_win_icons(self, event=None):
+        if event is not None and event.widget is not self.root:
+            return
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            user32 = ctypes.windll.user32
+            user32.LoadImageW.restype = wintypes.HANDLE
+            user32.LoadImageW.argtypes = [
+                wintypes.HINSTANCE, wintypes.LPCWSTR, wintypes.UINT,
+                ctypes.c_int, ctypes.c_int, wintypes.UINT,
+            ]
+            user32.SendMessageW.argtypes = [
+                wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM,
+            ]
+            IMAGE_ICON, LR_LOADFROMFILE = 1, 0x10
+            WM_SETICON, ICON_SMALL, ICON_BIG = 0x0080, 0, 1
+
+            hwnd = int(self.root.wm_frame(), 16)
+            try:
+                user32.GetDpiForWindow.argtypes = [wintypes.HWND]
+                dpi = user32.GetDpiForWindow(hwnd) or 96
+            except AttributeError:  # Windows 10 1607より前
+                dpi = 96
+
+            for kind, base in ((ICON_SMALL, 16), (ICON_BIG, 32)):
+                size = round(base * dpi / 96)
+                if size not in self._win_icons:
+                    self._win_icons[size] = user32.LoadImageW(
+                        None, self.icon_path, IMAGE_ICON, size, size, LR_LOADFROMFILE
+                    )
+                if self._win_icons[size]:
+                    user32.SendMessageW(hwnd, WM_SETICON, kind, self._win_icons[size])
         except Exception:
             pass
 
