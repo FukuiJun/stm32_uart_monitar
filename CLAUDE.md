@@ -41,6 +41,14 @@ pc_timestamp, t_ms, elapsed_ms, voltage_mV, current_mA, cap_mAh, cap_max_mAh, so
   - `--collect-data customtkinter` がないとテーマ JSON が同梱されず起動時に落ちる
 - `main` / `claude/**` への push と手動実行で Artifact `UartMonitor.zip`、`v*` タグ push で Release にも添付
 
+## バージョン管理・リリース
+
+- ユーザーから指定がない限り、バージョン番号とリリースのタイミングは Claude が判断してよい（ユーザー了承済み）
+- `vMAJOR.MINOR.PATCH` のタグを push すると Actions が exe をビルドし Release に `UartMonitor.zip` を添付する
+  - PATCH: 不具合修正・アイコン等の軽微な変更 / MINOR: 機能追加 / MAJOR: CSV フォーマット等の互換性が変わる変更
+- exe の中身が変わらない変更（ドキュメントのみ等）ではタグを打たない
+- リリース本文の編集・削除は MCP ツールがないためユーザーが GitHub 画面で行う
+
 ## UI の約束事
 
 - ダーク基調の計測機器風デザイン: 背景 `#0d1117`、パネル `#161b22`
