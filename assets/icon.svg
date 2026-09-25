@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <title>UART Logger</title>
+  <rect x="0" y="0" width="512" height="512" rx="112" fill="#13202B"/>
+  <rect x="40" y="243" width="232" height="30" fill="#DDE3E8"/>
+  <rect x="268" y="196" width="100" height="124" rx="4" fill="#DDE3E8"/>
+  <rect x="375" y="215" width="82" height="90" fill="none" stroke="#DDE3E8" stroke-width="14" stroke-linejoin="miter"/>
+  <rect x="394" y="236" width="44" height="14" fill="#3A4B5A"/>
+  <rect x="396" y="262" width="17" height="15" fill="#DDE3E8"/>
+  <rect x="419" y="262" width="17" height="15" fill="#DDE3E8"/>
+  <g fill="none" stroke-width="20" stroke-linecap="round" stroke-linejoin="round">
+    <path stroke="#F5A524" d="M204 200 H182 V158 H152 V200 H128 V158 H96"/>
+    <path stroke="#F5A524" d="M112 136 L88 158 L112 180"/>
+    <path stroke="#3CC8B4" d="M84 356 H110 V316 H140 V356 H170 V316 H200 V356 H236"/>
+    <path stroke="#3CC8B4" d="M220 334 L244 356 L220 378"/>
+  </g>
+</svg>

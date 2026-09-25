@@ -111,6 +111,15 @@ def app_dir() -> str:
     return os.path.dirname(os.path.abspath(__file__))
 
 
+def resource_path(relative: str) -> str:
+    """
+    同梱リソース(アイコン等)のパスを返す。
+    exe化(PyInstaller)時は展開先(_internal)、スクリプト実行時はこの.pyと同じフォルダを基準にする。
+    """
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, relative)
+
+
 def get_next_log_filename(base_name: str, directory: str = ".") -> str:
     """
     directory内の {base_name}1.csv, {base_name}2.csv, ... を調べて、
@@ -133,6 +142,7 @@ class UartLoggerApp:
     def __init__(self, root: ctk.CTk):
         self.root = root
         self.root.title("UartMonitor")
+        self._set_window_icon()
         self.root.geometry("760x520")
         self.root.configure(fg_color=COL_BG)
 
@@ -150,6 +160,13 @@ class UartLoggerApp:
 
         self.root.after(100, self._poll_queue)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _set_window_icon(self):
+        # タイトルバー・タスクバーのアイコン(.icoはWindowsのみ対応。失敗しても起動は続ける)
+        try:
+            self.root.iconbitmap(resource_path(os.path.join("assets", "icon.ico")))
+        except Exception:
+            pass
 
     # ---------- UI構築 ----------
 

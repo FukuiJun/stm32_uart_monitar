@@ -9,6 +9,7 @@ STM32L552VET6 から UART で送られるバッテリー測定データを PC �
 - `docs/HANDOFF.md` — 引き継ぎ資料（背景・通信仕様・設計判断の経緯）
 - `.github/workflows/build-exe.yml` — Windows ランナーで exe をビルドし zip 化する GitHub Actions
 - `packaging/使い方.txt` — 配布 zip に同梱するエンドユーザー向け説明
+- `assets/icon.ico` — アプリアイコン（exe・ウィンドウ用、16〜256px マルチサイズ）。`assets/icon.svg` がマスター
 
 ## 受信フォーマット（マイコン → PC）
 
@@ -35,7 +36,8 @@ pc_timestamp, t_ms, elapsed_ms, voltage_mV, current_mA, cap_mAh, cap_max_mAh, so
 ## exe ビルド
 
 - PyInstaller のフォルダ形式（onedir）。Linux ではビルドできないため GitHub Actions（`windows-latest`）で実行
-- コマンド: `pyinstaller --noconfirm --windowed --onedir --name UartMonitor --collect-data customtkinter uart_monitar_gui.py`
+- コマンド: `pyinstaller --noconfirm --windowed --onedir --name UartMonitor --icon assets/icon.ico --add-data "assets/icon.ico;assets" --collect-data customtkinter uart_monitar_gui.py`
+  - `--icon` は exe ファイル自体のアイコン、`--add-data` はウィンドウ(タイトルバー・タスクバー)用に `_internal/assets/icon.ico` として同梱
   - `--collect-data customtkinter` がないとテーマ JSON が同梱されず起動時に落ちる
 - `main` / `claude/**` への push と手動実行で Artifact `UartMonitor.zip`、`v*` タグ push で Release にも添付
 

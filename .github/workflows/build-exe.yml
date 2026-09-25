@@ -37,7 +37,7 @@ jobs:
 
       - name: Build
         if: steps.src.outputs.found == 'true'
-        run: pyinstaller --noconfirm --windowed --onedir --name UartMonitor --collect-data customtkinter uart_monitar_gui.py
+        run: pyinstaller --noconfirm --windowed --onedir --name UartMonitor --icon assets/icon.ico --add-data "assets/icon.ico;assets" --collect-data customtkinter uart_monitar_gui.py
 
       - name: Add usage guide
         if: steps.src.outputs.found == 'true'
