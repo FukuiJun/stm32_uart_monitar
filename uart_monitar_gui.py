@@ -9,8 +9,11 @@ UartMonitor: UARTログをGUIで表示しながらCSVに保存するツール（
     - 「接続」ボタンで通信開始、押すと「切断」に切り替わる単一のトグルボタン
     - ウィンドウにログをリアルタイム表示
     - 受信データは自動的にCSV(指定したベース名+連番)へ保存
-    - CSVは pc_timestamp, t_ms, elapsed_ms, voltage_mV, current_mA, cap_mAh,
-      cap_max_mAh, soc_percent, soh_percent, temp_C の列を持つ通常の表形式
+    - CSVは pc_timestamp, t_ms, elapsed_ms の後に、受信した項目の列が続く通常の表形式
+      (現在のフォーマットでは voltage_mV, current_mA, cap_mAh, cap_max_mAh, soc_percent,
+      soh_percent, temp_C。列は接続後に最初に受信した行の項目で決まる)
+    - 2番目の値(t_ms)以降は「ラベル, 値」の組として読むため、マイコン側で項目を追加・削除・
+      並べ替えしても time の付与とCSV保存が続く。知らないラベルはラベル名をそのまま列名にする
     - 経過時間(elapsed_ms)は実時間ではなく、INTERVAL欄で指定した固定値を加算幅として使う(1行目は0)
     - ログ表示・CSVの両方に経過時間を追加
     - 直近の電圧・電流・SOCをステータスバーに表示
@@ -64,41 +67,87 @@ FONT_MONO_SMALL = ("Consolas", 10)
 FONT_MONO_BOLD = ("Consolas", 14, "bold")
 
 
+# CSVの先頭に必ず置く列
+FIXED_COLUMNS = ["pc_timestamp", "t_ms", "elapsed_ms"]
+
+# 既知のラベル → CSV列名。"812/1261" のように "/" で区切られた値は列を分ける。
+# ここにないラベルは、ラベル名をそのまま列名にする("/" 区切りの2つ目以降は "ラベル_2" ...)
+KNOWN_COLUMNS = {
+    "V": ["voltage_mV"],
+    "I": ["current_mA"],
+    "Cap": ["cap_mAh", "cap_max_mAh"],
+    "SOC": ["soc_percent"],
+    "SOH": ["soh_percent"],
+    "T": ["temp_C"],
+}
+
+
+def _to_number(text: str):
+    """数値にできればint/floatにする。"24. 8" のような空白混入は除去する。数値でなければ文字列のまま。"""
+    text = text.replace(" ", "")
+    for conv in (int, float):
+        try:
+            return conv(text)
+        except ValueError:
+            pass
+    return text
+
+
 def parse_line(line: str):
     """
     'UP, 27368, V, 3925, I, -90, Cap, 812/1261, SOC, 65, SOH, 94, T, 24. 8'
-    のような行をパースして辞書で返す。パースできなければNoneを返す。
+    のような行を {"t_ms": 27368, "voltage_mV": 3925, ...} の辞書で返す(キーの順は受信順)。
+    "UP" で始まらない行は None を返す。
+
+    2番目の値が整数なら t_ms とし、以降を「ラベル, 値」の組として読む。位置で決め打ちしないので、
+    項目の追加・削除・並べ替えがあっても読める。
     """
     tokens = [t.strip() for t in line.split(",")]
-
-    if len(tokens) < 14 or tokens[0] != "UP":
+    if tokens[0] != "UP":
         return None
 
-    try:
-        t_ms = int(tokens[1])
-        voltage_mV = int(tokens[3])
-        current_mA = int(tokens[5])
+    data = {"t_ms": ""}
+    rest = tokens[1:]
+    if rest and isinstance(_to_number(rest[0]), int):
+        data["t_ms"] = _to_number(rest[0])
+        rest = rest[1:]
 
-        cap_str = tokens[7]  # 例: "812/1261"
-        cap_mAh, cap_max_mAh = cap_str.split("/")
+    for label, value in zip(rest[0::2], rest[1::2]):
+        if not label:
+            continue
+        names = KNOWN_COLUMNS.get(label, [])
+        for i, part in enumerate(value.split("/")):
+            if i < len(names):
+                column = names[i]
+            else:
+                column = label if i == 0 else f"{label}_{i + 1}"
+            data[column] = _to_number(part)
+    return data
 
-        soc = int(tokens[9])
-        soh = int(tokens[11])
 
-        temp_c = float(tokens[13].replace(" ", ""))
+class CsvRowWriter:
+    """
+    最初に書く行の項目から列(ヘッダー)を決めてCSVに書き込む。
+    列は FIXED_COLUMNS の後に受信順で並ぶ。以降の行で欠けている項目は空欄になる。
+    接続中に新しく現れた項目は列を増やせないため、write() の戻り値で知らせる(初回のみ)。
+    """
 
-        return {
-            "t_ms": t_ms,
-            "voltage_mV": voltage_mV,
-            "current_mA": current_mA,
-            "cap_mAh": int(cap_mAh),
-            "cap_max_mAh": int(cap_max_mAh),
-            "soc_percent": soc,
-            "soh_percent": soh,
-            "temp_C": temp_c,
-        }
-    except (ValueError, IndexError):
-        return None
+    def __init__(self, file):
+        self.file = file
+        self.writer = None
+        self.reported = set()
+
+    def write(self, row: dict) -> list:
+        if self.writer is None:
+            columns = FIXED_COLUMNS + [k for k in row if k not in FIXED_COLUMNS]
+            self.writer = csv.DictWriter(self.file, fieldnames=columns, restval="", extrasaction="ignore")
+            self.writer.writeheader()
+        self.writer.writerow(row)
+        self.file.flush()
+
+        new_columns = [k for k in row if k not in self.writer.fieldnames and k not in self.reported]
+        self.reported.update(new_columns)
+        return new_columns
 
 
 def app_dir() -> str:
@@ -484,12 +533,8 @@ class UartLoggerApp:
             self.toggle_btn.configure(text="接続", state="normal")
             messagebox.showerror("保存エラー", f"CSVファイルを作成できませんでした。\n\n{csv_path}\n\n{e}")
             return
-        self.csv_writer = csv.writer(self.csv_file)
-        self.csv_writer.writerow([
-            "pc_timestamp", "t_ms", "elapsed_ms", "voltage_mV", "current_mA",
-            "cap_mAh", "cap_max_mAh", "soc_percent", "soh_percent", "temp_C"
-        ])
-        self.csv_file.flush()
+        # ヘッダーは最初に受信した行の項目から決めるため、ここでは書かない
+        self.csv_writer = CsvRowWriter(self.csv_file)
 
         # 経過時間(elapsed_ms)は実時間ではなく、INTERVAL欄で指定した固定値を加算幅として使う
         try:
@@ -537,32 +582,29 @@ class UartLoggerApp:
                 continue
 
             data = parse_line(line)
+            if data is None:
+                # "UP" で始まらない行(デバッグ出力など)はそのまま表示するだけ
+                self.line_queue.put(("line", line, None))
+                continue
 
             # 経過時間(ms): INTERVAL欄で指定した固定値を加算幅として使う(1行目は0)
-            if data is not None:
-                elapsed_ms = self.elapsed_counter
-                self.elapsed_counter += self.line_increment_ms
-            else:
-                elapsed_ms = None
+            elapsed_ms = self.elapsed_counter
+            self.elapsed_counter += self.line_increment_ms
 
             # 表示用: "time, {経過時間}, up, {元のt_ms}, V, ..." の形式に組み替える
             tokens = [t.strip() for t in line.split(",")]
-            if len(tokens) >= 2 and tokens[0] == "UP" and elapsed_ms is not None:
-                display_line = ", ".join(["time", str(elapsed_ms), "up", tokens[1]] + tokens[2:])
-            else:
-                display_line = line
-
+            display_line = ", ".join(["time", str(elapsed_ms), "up"] + tokens[1:])
             self.line_queue.put(("line", display_line, data))
 
-            if data is not None:
-                pc_now = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
-                row = [
-                    pc_now, data["t_ms"], elapsed_ms, data["voltage_mV"], data["current_mA"],
-                    data["cap_mAh"], data["cap_max_mAh"],
-                    data["soc_percent"], data["soh_percent"], data["temp_C"],
-                ]
-                self.csv_writer.writerow(row)
-                self.csv_file.flush()
+            pc_now = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
+            new_columns = self.csv_writer.write({"pc_timestamp": pc_now, "elapsed_ms": elapsed_ms, **data})
+            if new_columns:
+                self.line_queue.put((
+                    "line",
+                    f"※ 接続中に追加された項目 {', '.join(new_columns)} はこのCSVに含まれません"
+                    "(再接続すると列に追加されます)",
+                    None,
+                ))
 
     def _poll_queue(self):
         while not self.line_queue.empty():
@@ -577,9 +619,12 @@ class UartLoggerApp:
             self._append_log(line)
 
             if data is not None:
-                self.v_label.configure(text=f"V: {data['voltage_mV']}mV")
-                self.i_label.configure(text=f"I: {data['current_mA']}mA")
-                self.soc_label.configure(text=f"SOC: {data['soc_percent']}%")
+                if "voltage_mV" in data:
+                    self.v_label.configure(text=f"V: {data['voltage_mV']}mV")
+                if "current_mA" in data:
+                    self.i_label.configure(text=f"I: {data['current_mA']}mA")
+                if "soc_percent" in data:
+                    self.soc_label.configure(text=f"SOC: {data['soc_percent']}%")
 
         self.root.after(100, self._poll_queue)
 
