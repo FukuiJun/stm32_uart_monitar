@@ -12,7 +12,7 @@ STM32L552VET6 から UART で送られるバッテリー測定データを PC �
 - `assets/icon.ico` — アプリアイコン（exe・ウィンドウ用、16〜256px マルチサイズ）。`assets/icon.svg` がマスター
   - 各サイズは **BMP 形式で格納すること**（PNG 形式だと Tk がサイズを読めず 16px を引き伸ばして使うため、タスクバーでぼやける）
   - Windows ではさらに `_apply_win_icons()` が表示倍率に合ったサイズを Win32 API で設定する
-- `tests/test_parsing.py` — 受信行のパースと CSV 列のユニットテスト（`python -m unittest discover -s tests -v`、CI でも実行）
+- `tests/` — ユニットテスト（`python -m unittest discover -s tests -v`、CI でも実行）。`test_parsing.py`: 受信行のパースと CSV 列、`test_settings.py`: 出力先フォルダ設定
 - `.github/scripts/smoke_test_exe.py` — CI でビルドした exe を起動し、ウィンドウのアイコンが icon.ico と一致するか検査
   - CI は 100% 表示のため、icon.ico を PNG 形式に差し替えた 2 回目の起動で `_apply_win_icons()` が効いていることも確認する（150% 等の実機確認は CI ではできない）
 
@@ -42,7 +42,9 @@ pc_timestamp, t_ms, elapsed_ms, voltage_mV, current_mA, cap_mAh, cap_max_mAh, so
 
 - `elapsed_ms` は実時間ではなく、1 行受信ごとに GUI の INTERVAL(ms) 値（初期 1000）を加算した値
 - ファイル名は FILENAME（初期 `mcu_log`）+ 接続ごとの連番（`mcu_log1.csv`, `mcu_log2.csv`, ...）
-- 保存先は `app_dir()`: exe 実行時は exe と同じフォルダ、スクリプト実行時は .py と同じフォルダ（カレントディレクトリには依存しない）
+- 保存先は GUI の OUTPUT 欄で選択（`self.output_dir`）。初期値は `app_dir()`: exe 実行時は exe と同じフォルダ、スクリプト実行時は .py と同じフォルダ（カレントディレクトリには依存しない）
+  - 選んだフォルダは `app_dir()` の `UartMonitor_settings.json`（`{"output_dir": ...}`）に保存し次回起動時に使う。フォルダが無くなっていたら既定に戻してログで通知（`resolve_output_dir()`）
+  - 接続時に保存先が無い・書けない場合はエラーダイアログを出して接続を中止する
 
 ## exe ビルド
 

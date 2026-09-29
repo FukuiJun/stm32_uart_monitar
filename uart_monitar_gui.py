@@ -5,6 +5,8 @@ UartMonitor: UARTログをGUIで表示しながらCSVに保存するツール（
     - 起動時にCOMポートを自動検出し、それらしいポート（ST-Link等）を自動選択
     - ボーレートをプルダウンから選択
     - 出力ファイル名のベース名を指定可能（初期値: "mcu_log" → mcu_log1.csv, mcu_log2.csv, ...）
+    - OUTPUT欄の「参照...」でCSVの保存先フォルダを選択可能（初期値: exeと同じフォルダ）。
+      選んだフォルダは UartMonitor_settings.json に保存され、次回起動時も使われる
     - INTERVAL欄で、timeに加算する固定値(ms)を指定可能（初期値: 1000）
     - 「接続」ボタンで通信開始、押すと「切断」に切り替わる単一のトグルボタン
     - ウィンドウにログをリアルタイム表示
@@ -26,6 +28,7 @@ UartMonitor: UARTログをGUIで表示しながらCSVに保存するツール（
 """
 
 import csv
+import json
 import os
 import re
 import sys
@@ -34,13 +37,14 @@ import threading
 from datetime import datetime
 
 import customtkinter as ctk
-from tkinter import messagebox
+from tkinter import filedialog, messagebox
 import serial
 import serial.tools.list_ports
 
 BAUD_RATES = ["9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"]
 DEFAULT_FILENAME_BASE = "mcu_log"
 DEFAULT_INTERVAL_MS = 1000
+SETTINGS_FILENAME = "UartMonitor_settings.json"
 
 # ===== カラーパレット（計測機器風・水色） =====
 COL_BG = "#0d1117"
@@ -160,6 +164,45 @@ def app_dir() -> str:
     return os.path.dirname(os.path.abspath(__file__))
 
 
+def settings_path() -> str:
+    """設定ファイルのパス(exe/スクリプトと同じフォルダ)。"""
+    return os.path.join(app_dir(), SETTINGS_FILENAME)
+
+
+def load_settings(path: str) -> dict:
+    """設定ファイルを読む。無い・壊れている場合は空の辞書を返す。"""
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def save_settings(path: str, settings: dict) -> bool:
+    """設定ファイルを書く。書けなければ False を返す。"""
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(settings, f, ensure_ascii=False, indent=2)
+    except OSError:
+        return False
+    return True
+
+
+def resolve_output_dir(saved, default: str) -> str:
+    """保存されていた出力先フォルダが今も存在すればそれを、なければ既定のフォルダを返す。"""
+    if isinstance(saved, str) and saved and os.path.isdir(saved):
+        return saved
+    return default
+
+
+def shorten_path(path: str, max_chars: int) -> str:
+    """長いパスは先頭を省略して末尾(フォルダ名側)を残す。"""
+    if len(path) <= max_chars:
+        return path
+    return "…" + path[-(max_chars - 1):]
+
+
 def resource_path(relative: str) -> str:
     """
     同梱リソース(アイコン等)のパスを返す。
@@ -192,7 +235,7 @@ class UartLoggerApp:
         self.root = root
         self.root.title("UartMonitor")
         self._set_window_icon()
-        self.root.geometry("760x520")
+        self.root.geometry("760x560")
         self.root.configure(fg_color=COL_BG)
 
         self.serial_conn = None
@@ -204,8 +247,15 @@ class UartLoggerApp:
         self.elapsed_counter = 0
         self.line_increment_ms = DEFAULT_INTERVAL_MS
 
+        # CSVの保存先フォルダ(前回選んだフォルダがあればそれを使う)
+        self.settings = load_settings(settings_path())
+        saved_dir = self.settings.get("output_dir")
+        self.output_dir = resolve_output_dir(saved_dir, app_dir())
+
         self._build_widgets()
         self._refresh_ports()
+        if saved_dir and self.output_dir != saved_dir:
+            self._append_log(f"※ 前回の保存先 {saved_dir} が見つからないため、{self.output_dir} に保存します")
 
         self.root.after(100, self._poll_queue)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -305,7 +355,7 @@ class UartLoggerApp:
         control_panel.pack(fill="x")
 
         control_inner = ctk.CTkFrame(control_panel, fg_color="transparent")
-        control_inner.pack(fill="x", padx=20, pady=16)
+        control_inner.pack(fill="x", padx=20, pady=(16, 10))
 
         # PORT
         port_col = ctk.CTkFrame(control_inner, fg_color="transparent")
@@ -398,6 +448,35 @@ class UartLoggerApp:
         )
         self.toggle_btn.pack(anchor="w", pady=(4, 0))
 
+        # 出力先フォルダ（接続設定パネルの2段目）
+        output_row = ctk.CTkFrame(control_panel, fg_color="transparent")
+        output_row.pack(fill="x", padx=20, pady=(0, 14))
+        ctk.CTkLabel(
+            output_row, text="OUTPUT", text_color=COL_TEXT_DIM, font=FONT_MONO_SMALL
+        ).pack(side="left")
+
+        secondary_btn = dict(
+            height=24, fg_color=COL_PANEL_BORDER, hover_color=COL_INPUT_BORDER,
+            text_color=COL_TEXT, text_color_disabled=COL_TEXT_DISABLED,
+            font=FONT_MONO_SMALL, corner_radius=4,
+        )
+        # 右側のボタンを先に配置し、残りの幅をパス表示に使う
+        self.output_open_btn = ctk.CTkButton(
+            output_row, text="開く", width=56, command=self._on_open_output, **secondary_btn
+        )
+        self.output_open_btn.pack(side="right")
+        self.output_browse_btn = ctk.CTkButton(
+            output_row, text="参照...", width=70, command=self._on_browse_output, **secondary_btn
+        )
+        self.output_browse_btn.pack(side="right", padx=(0, 6))
+
+        self.output_label = ctk.CTkLabel(
+            output_row, text="", height=24, anchor="w",
+            fg_color=COL_INPUT_BG, text_color=COL_TEXT, font=FONT_MONO_SMALL, corner_radius=4,
+        )
+        self.output_label.pack(side="left", fill="x", expand=True, padx=(10, 10))
+        self._update_output_label()
+
         # ===== ステータスバー =====
         status_bar = ctk.CTkFrame(self.root, fg_color=COL_BG, corner_radius=0)
         status_bar.pack(fill="x")
@@ -439,6 +518,30 @@ class UartLoggerApp:
         # 直近の行を明るい水色でハイライトするためのタグ
         self.log_text.tag_config("recent", foreground=COL_LOG_RECENT)
         self.log_text.tag_config("old", foreground=COL_LOG_OLD)
+
+    # ---------- 出力先フォルダ ----------
+
+    def _update_output_label(self):
+        self.output_label.configure(text=" " + shorten_path(self.output_dir, 64))
+
+    def _on_browse_output(self):
+        chosen = filedialog.askdirectory(
+            parent=self.root, initialdir=self.output_dir, title="CSVの保存先フォルダを選択"
+        )
+        if not chosen:  # キャンセル
+            return
+        self.output_dir = os.path.normpath(chosen)
+        self._update_output_label()
+
+        self.settings["output_dir"] = self.output_dir
+        if not save_settings(settings_path(), self.settings):
+            self._append_log("※ 設定を保存できませんでした(次回起動時は既定のフォルダに戻ります)")
+
+    def _on_open_output(self):
+        try:
+            os.startfile(self.output_dir)  # Windows のエクスプローラーで開く
+        except (AttributeError, OSError) as e:
+            messagebox.showerror("エラー", f"フォルダを開けませんでした。\n\n{self.output_dir}\n\n{e}")
 
     # ---------- ポート検出 ----------
 
@@ -522,16 +625,21 @@ class UartLoggerApp:
             messagebox.showerror("接続エラー", f"{port} を開けませんでした。\n\n{e}")
             return
 
-        save_dir = app_dir()
-        self.current_csv_name = get_next_log_filename(self.filename_entry.get(), save_dir)
-        csv_path = os.path.join(save_dir, self.current_csv_name)
+        save_dir = self.output_dir
         try:
+            # 保存先フォルダが削除されていた場合も、ここで OSError になる
+            self.current_csv_name = get_next_log_filename(self.filename_entry.get(), save_dir)
+            csv_path = os.path.join(save_dir, self.current_csv_name)
             self.csv_file = open(csv_path, "w", newline="", encoding="utf-8")
         except OSError as e:
             self.serial_conn.close()
             self.serial_conn = None
             self.toggle_btn.configure(text="接続", state="normal")
-            messagebox.showerror("保存エラー", f"CSVファイルを作成できませんでした。\n\n{csv_path}\n\n{e}")
+            messagebox.showerror(
+                "保存エラー",
+                f"CSVファイルを作成できませんでした。\n\n保存先: {save_dir}\n\n{e}\n\n"
+                "OUTPUT欄の「参照...」で別のフォルダを選んでください。",
+            )
             return
         # ヘッダーは最初に受信した行の項目から決めるため、ここでは書かない
         self.csv_writer = CsvRowWriter(self.csv_file)
@@ -565,6 +673,7 @@ class UartLoggerApp:
         self.refresh_btn.configure(state="disabled")
         self.filename_entry.configure(state="disabled")
         self.interval_entry.configure(state="disabled")
+        self.output_browse_btn.configure(state="disabled")
 
     def _read_loop(self):
         while not self.stop_event.is_set():
@@ -673,6 +782,7 @@ class UartLoggerApp:
         self.refresh_btn.configure(state="normal")
         self.filename_entry.configure(state="normal")
         self.interval_entry.configure(state="normal")
+        self.output_browse_btn.configure(state="normal")
 
     def _on_close(self):
         if self.serial_conn is not None:

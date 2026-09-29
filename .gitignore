@@ -10,3 +10,6 @@ dist/
 
 # UartMonitor が出力するログ CSV
 mcu_log*.csv
+
+# UartMonitor の設定ファイル(出力先フォルダ等)
+UartMonitor_settings.json

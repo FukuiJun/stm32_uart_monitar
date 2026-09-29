@@ -9,12 +9,14 @@ Tk が .ico の各サイズを読めないと、16px の画像を引き伸ばし
 2回目: icon.ico を Tk が読めない PNG 形式に差し替えたコピーで起動する。Tk だけでは 16px を
 引き伸ばしたアイコンになるため、アプリ側の Win32 API による設定 (_apply_win_icons) が
 実際に効いていることを確認できる (CI は 100% 表示で、通常は Tk と結果が同じになるため)。
-2回目には Pillow が必要。
+2回目は、存在しない保存先フォルダを記録した設定ファイルも置き、起動時のフォールバックで
+落ちないことも確認する。2回目には Pillow が必要。
 
 使い方: python smoke_test_exe.py dist/UartMonitor/UartMonitor.exe
 """
 
 import ctypes
+import json
 import os
 import shutil
 import subprocess
@@ -162,6 +164,8 @@ def main():
         ico = Image.open(bundled_ico(exe_path))
         sizes = sorted(ico.info["sizes"])
         ico.save(bundled_ico(exe_copy), format="ICO", sizes=sizes)  # Pillow の既定は PNG 形式
+        with open(os.path.join(app_copy, "UartMonitor_settings.json"), "w", encoding="utf-8") as f:
+            json.dump({"output_dir": os.path.join(tmp, "deleted_folder")}, f)
         errors += [f"[PNG ico] {e}" for e in run_check(exe_copy)]
 
     if errors:
