@@ -13,3 +13,6 @@ mcu_log*.csv
 
 # UartMonitor の設定ファイル(出力先フォルダ等)
 UartMonitor_settings.json
+
+# exe ビルド時に生成するバージョン情報
+_version.py

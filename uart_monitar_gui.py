@@ -19,6 +19,7 @@ UartMonitor: UARTログをGUIで表示しながらCSVに保存するツール（
     - 経過時間(elapsed_ms)は実時間ではなく、INTERVAL欄で指定した固定値を加算幅として使う(1行目は0)
     - ログ表示・CSVの両方に経過時間を追加
     - 直近の電圧・電流・SOCをステータスバーに表示
+    - ヘッダー右上にバージョンを表示（exe ビルド時に生成される _version.py から読む。無ければ "dev"）
 
 必要なライブラリ:
     pip install pyserial customtkinter
@@ -40,6 +41,11 @@ import customtkinter as ctk
 from tkinter import filedialog, messagebox
 import serial
 import serial.tools.list_ports
+
+try:
+    from _version import VERSION  # exe ビルド時に GitHub Actions が生成する
+except ImportError:
+    VERSION = "dev"
 
 BAUD_RATES = ["9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"]
 DEFAULT_FILENAME_BASE = "mcu_log"
@@ -341,7 +347,7 @@ class UartLoggerApp:
         title.pack(side="left", padx=(8, 0))
 
         subtitle = ctk.CTkLabel(
-            header_inner, text="STM32L552VET6", text_color=COL_TEXT_DIM,
+            header_inner, text=f"STM32L552VET6 · {VERSION}", text_color=COL_TEXT_DIM,
             font=FONT_MONO_SMALL
         )
         subtitle.pack(side="right")

@@ -4,12 +4,12 @@ STM32L552VET6 から UART 経由で送信されるバッテリー測定データ
 
 ## 使い方（Python 不要・exe 版）
 
-1. GitHub の **Actions** タブ → 「Build exe」の最新の実行 → **Artifacts** の `UartMonitor` をダウンロード（zip でダウンロードされる）
-   （`v1.0` のようなタグを push した場合は **Releases** からも `UartMonitor.zip` を入手可能）
+1. GitHub の **Releases** から `UartMonitor_vX.Y.Z.zip` をダウンロード
+   （開発中のビルドは **Actions** タブ → 「Build exe」の実行 → **Artifacts** の `UartMonitor_dev-<コミット>`）
 2. zip を解凍し、`UartMonitor` フォルダ内の `UartMonitor.exe` を起動
 3. CSV は OUTPUT 欄のフォルダに保存される（初期設定は exe と同じフォルダ。「参照...」で変更でき、次回起動時も引き継がれる）
 
-詳細は zip に同梱の `使い方.txt` を参照。
+詳細は zip に同梱の `使い方.txt` を参照。バージョンはフォルダ内の `VERSION.txt` と画面右上で確認できる。
 
 ## 開発者向け（Python から実行）
 

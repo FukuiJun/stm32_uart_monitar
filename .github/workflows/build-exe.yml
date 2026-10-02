@@ -43,13 +43,30 @@ jobs:
         if: steps.src.outputs.found == 'true'
         run: pip install -r requirements.txt pyinstaller
 
+      # リリース時はタグ(v1.2.3)、それ以外は dev-<コミット短縮ハッシュ>
+      - name: Set version
+        if: steps.src.outputs.found == 'true'
+        shell: pwsh
+        run: |
+          $v = if ($env:RELEASE_TAG) { $env:RELEASE_TAG } else { "dev-" + $env:GITHUB_SHA.Substring(0, 7) }
+          "APP_VERSION=$v" >> $env:GITHUB_ENV
+          python .github/scripts/version_info.py py $v _version.py
+          Write-Output "version: $v"
+
       - name: Unit tests
         if: steps.src.outputs.found == 'true'
         run: python -m unittest discover -s tests -v
 
       - name: Build
         if: steps.src.outputs.found == 'true'
-        run: pyinstaller --noconfirm --windowed --onedir --name UartMonitor --icon assets/icon.ico --add-data "assets/icon.ico;assets" --collect-data customtkinter uart_monitar_gui.py
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --windowed --onedir --name UartMonitor --icon assets/icon.ico --add-data "assets/icon.ico;assets" --collect-data customtkinter uart_monitar_gui.py
+          # 画面のバージョン表示に使う _version.py が exe に取り込まれたか確認する
+          if (Select-String -Path build/UartMonitor/warn-UartMonitor.txt -Pattern 'missing module named _version -' -SimpleMatch -Quiet) {
+            Write-Output "::error::_version.py was not bundled into the exe"
+            exit 1
+          }
 
       - name: Smoke test (window opens, icon size)
         if: steps.src.outputs.found == 'true'
@@ -57,22 +74,25 @@ jobs:
           pip install pillow
           python .github/scripts/smoke_test_exe.py dist/UartMonitor/UartMonitor.exe
 
-      - name: Add usage guide
+      - name: Add usage guide and version memo
         if: steps.src.outputs.found == 'true'
         shell: pwsh
-        run: Copy-Item packaging/*.txt dist/UartMonitor/
+        run: |
+          Copy-Item packaging/*.txt dist/UartMonitor/
+          python .github/scripts/version_info.py txt $env:APP_VERSION dist/UartMonitor/VERSION.txt
+          Get-Content dist/UartMonitor/VERSION.txt
 
       # Artifact はダウンロード時に GitHub が zip 化するので、フォルダをそのまま上げる
       - uses: actions/upload-artifact@v4
         if: steps.src.outputs.found == 'true'
         with:
-          name: UartMonitor
+          name: UartMonitor_${{ env.APP_VERSION }}
           path: dist/UartMonitor
 
       - name: Package zip for release
         if: steps.src.outputs.found == 'true' && startsWith(env.RELEASE_TAG, 'v')
         shell: pwsh
-        run: Compress-Archive -Path dist/UartMonitor -DestinationPath UartMonitor.zip
+        run: Compress-Archive -Path dist/UartMonitor -DestinationPath "UartMonitor_$env:APP_VERSION.zip"
 
       # タグが未作成なら、ビルドしたコミットにタグを作成してリリースする
       - uses: softprops/action-gh-release@v2
@@ -80,4 +100,4 @@ jobs:
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           target_commitish: ${{ github.sha }}
-          files: UartMonitor.zip
+          files: UartMonitor_${{ env.APP_VERSION }}.zip

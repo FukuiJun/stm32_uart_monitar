@@ -52,13 +52,16 @@ pc_timestamp, t_ms, elapsed_ms, voltage_mV, current_mA, cap_mAh, cap_max_mAh, so
 - コマンド: `pyinstaller --noconfirm --windowed --onedir --name UartMonitor --icon assets/icon.ico --add-data "assets/icon.ico;assets" --collect-data customtkinter uart_monitar_gui.py`
   - `--icon` は exe ファイル自体のアイコン、`--add-data` はウィンドウ(タイトルバー・タスクバー)用に `_internal/assets/icon.ico` として同梱
   - `--collect-data customtkinter` がないとテーマ JSON が同梱されず起動時に落ちる
-- `main` / `claude/**` への push と手動実行で Artifact `UartMonitor.zip`、リリース方法は下記
+- `main` / `claude/**` への push と手動実行で Artifact `UartMonitor_dev-<短縮SHA>`、リリース方法は下記
+- バージョン表記（`.github/scripts/version_info.py`）: リリース時はタグ（`v1.2.3`）、それ以外は `dev-<短縮SHA>`（workflow の `APP_VERSION`）
+  - ビルド前に `_version.py`（`VERSION = "..."`、gitignore 済み）を生成し、アプリはヘッダー右上に表示する（無ければ `dev`）
+  - 配布フォルダに `VERSION.txt`（バージョン・ビルド日時 JST・コミット・リリース URL）を置く
 
 ## バージョン管理・リリース
 
 - ユーザーから指定がない限り、バージョン番号とリリースのタイミングは Claude が判断してよい（ユーザー了承済み）
 - リリースは Actions の「Build exe」を手動実行し、入力 `release_tag` に `vMAJOR.MINOR.PATCH` を指定する（MCP `actions_run_trigger`、`ref` は作業ブランチ）
-  - ビルド・スモークテスト後、ビルドしたコミットにタグを作成し Release に `UartMonitor.zip` を添付する
+  - ビルド・スモークテスト後、ビルドしたコミットにタグを作成し Release に `UartMonitor_vX.Y.Z.zip` を添付する
   - Claude のセッションからはタグの push が git プロキシで拒否される（HTTP 403）ため、この方法を使う。ユーザーが手元からタグを push しても同様にリリースされる
   - PATCH: 不具合修正・アイコン等の軽微な変更 / MINOR: 機能追加 / MAJOR: CSV フォーマット等の互換性が変わる変更
 - exe の中身が変わらない変更（ドキュメントのみ等）ではタグを打たない
