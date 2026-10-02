@@ -16,6 +16,35 @@ from datetime import datetime, timedelta, timezone
 JST = timezone(timedelta(hours=9), "JST")
 
 
+def repo_url():
+    return f"{os.environ.get('GITHUB_SERVER_URL', 'https://github.com')}/{os.environ.get('GITHUB_REPOSITORY', '')}"
+
+
+def version_text(version, sha, built, shows_in_app=True, note=None):
+    """
+    VERSION.txt の本文を返す。
+    built はビルド日時 (datetime)。shows_in_app=False は画面にバージョンを表示しない旧版用。
+    note は末尾に追記する補足。
+    """
+    if version.startswith("v"):
+        release = f"{repo_url()}/releases/tag/{version}"
+    else:
+        release = "なし (開発ビルド。リリース版ではありません)"
+
+    lines = [
+        f"UartMonitor {version}",
+        "",
+        f"ビルド日時 : {built.astimezone(JST).strftime('%Y-%m-%d %H:%M JST')}",
+        f"コミット   : {(sha or 'unknown')[:7]}",
+        f"リリース   : {release}",
+    ]
+    if shows_in_app:
+        lines += ["", "起動中のバージョンは、画面右上 (STM32L552VET6 の横) にも表示されます。"]
+    if note:
+        lines += ["", note]
+    return "\r\n".join(lines) + "\r\n"
+
+
 def write_py(version, path):
     with open(path, "w", encoding="utf-8") as f:
         f.write("# ビルド時に .github/scripts/version_info.py が生成する。リポジトリには含めない\n")
@@ -23,25 +52,9 @@ def write_py(version, path):
 
 
 def write_txt(version, path):
-    sha = os.environ.get("GITHUB_SHA", "")[:7] or "unknown"
-    repo_url = f"{os.environ.get('GITHUB_SERVER_URL', 'https://github.com')}/{os.environ.get('GITHUB_REPOSITORY', '')}"
-    if version.startswith("v"):
-        release = f"{repo_url}/releases/tag/{version}"
-    else:
-        release = "なし (開発ビルド。リリース版ではありません)"
-    built = datetime.now(JST).strftime("%Y-%m-%d %H:%M JST")
-
-    lines = [
-        f"UartMonitor {version}",
-        "",
-        f"ビルド日時 : {built}",
-        f"コミット   : {sha}",
-        f"リリース   : {release}",
-        "",
-        "起動中のバージョンは、画面右上 (STM32L552VET6 の横) にも表示されます。",
-    ]
-    with open(path, "w", encoding="utf-8", newline="\r\n") as f:
-        f.write("\n".join(lines) + "\n")
+    text = version_text(version, os.environ.get("GITHUB_SHA", ""), datetime.now(JST))
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        f.write(text)
 
 
 if __name__ == "__main__":

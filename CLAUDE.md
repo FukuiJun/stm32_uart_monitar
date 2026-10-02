@@ -66,6 +66,7 @@ pc_timestamp, t_ms, elapsed_ms, voltage_mV, current_mA, cap_mAh, cap_max_mAh, so
   - PATCH: 不具合修正・アイコン等の軽微な変更 / MINOR: 機能追加 / MAJOR: CSV フォーマット等の互換性が変わる変更
 - exe の中身が変わらない変更（ドキュメントのみ等）ではタグを打たない
 - リリース本文の編集・削除は MCP ツールがないためユーザーが GitHub 画面で行う
+- v1.2.0 以前の旧形式 zip（`UartMonitor.zip`）は「Repackage old releases」workflow（`.github/scripts/repackage_release.py`）で `UartMonitor_vX.Y.Z.zip` + `VERSION.txt` に差し替える。exe は当時のまま（ビルドし直さない）。入力 `tags` 空欄なら対象の全リリース
 
 ## UI の約束事
 

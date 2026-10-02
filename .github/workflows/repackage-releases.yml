@@ -1,0 +1,26 @@
+name: Repackage old releases
+
+# 旧形式のリリース zip (UartMonitor.zip) を UartMonitor_vX.Y.Z.zip + VERSION.txt に差し替える。
+# exe は当時のまま (ビルドし直さない)。手動実行のみ。
+on:
+  workflow_dispatch:
+    inputs:
+      tags:
+        description: "対象のタグ (空白区切り、例: v1.0.1 v1.0.2)。空欄なら UartMonitor.zip が付いた全リリース"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  repackage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Repackage
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAGS: ${{ inputs.tags }}
+        run: python3 .github/scripts/repackage_release.py $TAGS
